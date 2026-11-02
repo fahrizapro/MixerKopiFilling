@@ -142,19 +142,19 @@ graph TB
 
 ### Komponen
 
-| # | Komponen | Fungsi | Estimasi Harga |
-|---|----------|--------|----------------|
-| 1 | **Arduino Uno R3** | Mikrokontroler utama | ~Rp 120.000 |
-| 2 | **BTS7960 (IBT-2)** | Driver motor H-Bridge 43 A | ~Rp 60.000 |
-| 3 | **Motor DC + Gearbox** | Pengaduk kopi | — |
-| 4 | **Encoder 20 PPR** | Umpan balik kecepatan | ~Rp 45.000 |
-| 5 | **HC-SR04** | Sensor jarak/level air non-kontak | ~Rp 15.000 |
-| 6 | **TCS3200** | Sensor warna RGB | ~Rp 35.000 |
-| 7 | **Modul Relay 1 Channel** | Saklar solenoid valve | ~Rp 10.000 |
-| 8 | **Solenoid Valve 12 V** | Katup pengisian | ~Rp 90.000 |
-| 9 | **LCD 20×4 + I2C backpack** | Tampilan | ~Rp 55.000 |
-| 10 | **Keypad 4×4 + PCF8574** | Input lokal | ~Rp 25.000 |
-| 11 | **Power Supply 12 V / 5 V** | Catu daya motor & valve | — |
+| # | Komponen | Fungsi |
+|---|----------|--------|
+| 1 | **Arduino Uno R3** | Mikrokontroler utama |
+| 2 | **BTS7960 (IBT-2)** | Driver motor H-Bridge 43 A |
+| 3 | **Motor DC + Gearbox** | Pengaduk kopi |
+| 4 | **Encoder 20 PPR** | Umpan balik kecepatan |
+| 5 | **HC-SR04** | Sensor jarak/level air non-kontak |
+| 6 | **TCS3200** | Sensor warna RGB |
+| 7 | **Modul Relay 1 Channel** | Saklar solenoid valve |
+| 8 | **Solenoid Valve 12 V** | Katup pengisian |
+| 9 | **LCD 20×4 + I2C backpack** | Tampilan |
+| 10 | **Keypad 4×4 + PCF8574** | Input lokal |
+| 11 | **Power Supply 12 V / 5 V** | Catu daya motor & valve |
 
 ### 📊 Tabel Pin
 
