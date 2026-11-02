@@ -9,8 +9,8 @@ Arduino Uno · BTS7960 · HC-SR04 · TCS3200 · LCD 20×4 I2C
 
 | | |
 |---|---|
-| **👤 Pengembang** | Fahriza Basyarun |
-| **🐙 GitHub** | [@fahrizapro](https://github.com/fahrizapro) |
+| **👤 Pengembang** | Yoga |
+| **🏫 Kampus** | Politeknik Negeri Malang |
 | **🔧 Board** | Arduino Uno (ATmega328P) |
 | **📅 Tahun** | 2026 |
 
@@ -878,8 +878,8 @@ Proyek ini dilisensikan di bawah **MIT License** — lihat [LICENSE](LICENSE).
 
 <div align="center">
 
-**☕ Mixer Kopi + Filling Otomatis**  
-Dibuat dengan ❤️ oleh [Fahriza Basyarun](https://github.com/fahrizapro)
+**☕ Mixer Kopi & Filling Otomatis**  
+Dibuat dengan ❤️ oleh Yoga
 
 <sub>Arduino Uno · PID · Timer 10 Zona · 2026</sub>
 
