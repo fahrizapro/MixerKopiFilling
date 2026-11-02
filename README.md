@@ -1,6 +1,6 @@
 <div align="center">
 
-# ☕ Mixer Kopi + Filling Otomatis
+# ☕ Mixer Kopi & Filling Otomatis
 
 **Pengaduk kopi berbasis PID dengan pengisian cairan timer 10 zona**  
 Arduino Uno · BTS7960 · HC-SR04 · TCS3200 · LCD 20×4 I2C
@@ -18,8 +18,8 @@ Arduino Uno · BTS7960 · HC-SR04 · TCS3200 · LCD 20×4 I2C
 
 [![Arduino](https://img.shields.io/badge/Arduino-Uno-00979D?logo=arduino&logoColor=white)](https://www.arduino.cc/)
 [![C++](https://img.shields.io/badge/C%2B%2B-Arduino-00599C?logo=cplusplus&logoColor=white)](https://www.arduino.cc/reference/en/)
-[![License](https://img.shields.io/github/license/fahrizapro/mixer-kopi-fill-timer10zona)](LICENSE)
-[![Last Commit](https://img.shields.io/github/last-commit/fahrizapro/mixer-kopi-fill-timer10zona)](https://github.com/fahrizapro/mixer-kopi-fill-timer10zona/commits/main)
+[![License](https://img.shields.io/github/license/fahrizapro/MixerKopiFilling)](LICENSE)
+[![Last Commit](https://img.shields.io/github/last-commit/fahrizapro/MixerKopiFilling)](https://github.com/fahrizapro/MixerKopiFilling/commits/main)
 [![Flash](https://img.shields.io/badge/Flash-94%25-orange)]()
 [![RAM](https://img.shields.io/badge/RAM-74%25-orange)]()
 
@@ -408,16 +408,16 @@ stateDiagram-v2
 ## 📁 Struktur Proyek
 
 ```
-📂 mixer_kopi_fill_timer10zona/
-├── 📄 mixer_kopi_fill_timer10zona.ino   # Firmware utama (1.256 baris)
-├── 📄 README.md                          # Dokumentasi ini
-├── 📄 LICENSE                            # Lisensi MIT
-└── 📄 .gitignore                         # Artefak build Arduino
+📂 MixerKopiFilling/
+├── 📄 MixerKopiFilling.ino   # Firmware utama (1.256 baris)
+├── 📄 README.md              # Dokumentasi ini
+├── 📄 LICENSE                # Lisensi MIT
+└── 📄 .gitignore             # Artefak build Arduino
 ```
 
 | File | Bahasa | Baris | Fungsi |
 |------|--------|-------|--------|
-| `mixer_kopi_fill_timer10zona.ino` | C++ (Arduino) | 1.256 | Seluruh firmware: PID, filling, filter sensor, HMI, EEPROM, serial |
+| `MixerKopiFilling.ino` | C++ (Arduino) | 1.256 | Seluruh firmware: PID, filling, filter sensor, HMI, EEPROM, serial |
 | `README.md` | Markdown | — | Dokumentasi teknis dan panduan penggunaan |
 
 ---
@@ -466,11 +466,11 @@ stateDiagram-v2
 
 ```bash
 # 1. Clone repositori
-git clone https://github.com/fahrizapro/mixer-kopi-fill-timer10zona.git
-cd mixer-kopi-fill-timer10zona
+git clone https://github.com/fahrizapro/MixerKopiFilling.git
+cd MixerKopiFilling
 ```
 
-**2.** Buka `mixer_kopi_fill_timer10zona.ino` di Arduino IDE.
+**2.** Buka `MixerKopiFilling.ino` di Arduino IDE.
 
 **3.** Sesuaikan jika perlu (di bagian atas file):
 
