@@ -445,9 +445,9 @@ stateDiagram-v2
 
 | Memori | Terpakai | Kapasitas | Persentase |
 |--------|----------|-----------|------------|
-| **Flash** | 32.072 B | 32.256 B | **99%** |
-| **RAM statis** | 1.571 B | 2.048 B | **76%** |
-| Sisa stack | 477 B | — | ⚠️ tipis |
+| **Flash** | 32.162 B | 32.256 B | **99%** |
+| **RAM statis** | 1.575 B | 2.048 B | **77%** |
+| Sisa stack | 473 B | — | ⚠️ tipis |
 
 > Firmware ini memang dioptimalkan hemat flash (`F()`, `PSTR()`, `PROGMEM`). Menambah fitur besar berisiko melebihi kapasitas.
 
@@ -470,7 +470,7 @@ git clone https://github.com/fahrizapro/MixerKopiFilling.git
 cd MixerKopiFilling
 ```
 
-**2.** Buka `MixerKopiFilling.ino` di Arduino IDE.
+**2.** Buka sketch `MixerKopiFilling/MixerKopiFilling.ino` di Arduino IDE (nama folder = nama file, syarat Arduino).
 
 **3.** Sesuaikan jika perlu (di bagian atas file):
 
@@ -575,6 +575,7 @@ Semua perintah diakhiri **newline**, tidak peka huruf besar/kecil.
 | `FH n` | `FH 85` | `40–99` (default 85) | Ambang homogen penuh; motor berhenti pada `FH − 10` |
 | `DWELL n` | `DWELL 10000` | `0–60000` ms (default 10000) | Homogen harus bertahan selama ini sebelum stop |
 | `MINSTIR n` | `MINSTIR 30` | `0–95` % (default 30) | Min. % durasi timer sebelum FUZZ boleh aktif |
+| `INFO` | `INFO` | — | Cetak semua parameter aktif: PID, EMA, CAL, MAX, FUZZ, FH, DWELL, MINSTIR, Q zona, REF, TRIM |
 
 ### Contoh Sesi
 
@@ -621,11 +622,6 @@ MON: T ST VOL ISI GOAL ZONA Q SISA VALVE
 | `SISA` | Sisa waktu (detik) |
 | `HOM` | Skor homogenisasi 0–100% |
 | `R` `G` `B` | Lebar pulsa mentah TCS3200 |
-| `FUZZ` | `1` = penghentian hybrid aktif |
-| `SOK` | `1` = sensor warna dipercaya (tidak gagal beruntun ≥ 5) |
-| `FH` | Ambang homogen penuh (motor stop pada `FH−10`) |
-| `DW` | Dwell penghentian (detik) |
-| `MS` | Minimum % durasi timer sebelum FUZZ aktif |
 | `VOL` | Target volume (liter) |
 | `ISI` | Volume terintegrasi timer (mL) |
 | `GOAL` | Ambang tutup = target − TRIM (mL) |
@@ -663,6 +659,27 @@ STOP=FUZZY H=86.2 T=142s
 | `T` | Waktu aduk terpakai (detik) |
 
 Layar DONE saat itu juga menampilkan judul **ADUK FUZZY** dengan baris "Homogen capai SP", berbeda dari **ADUK SELESAI** (timer habis).
+
+### Perintah INFO
+
+Menampilkan **semua parameter aktif** saat itu — praktis untuk dokumentasi percobaan atau cek cepat sebelum mengirim `SAVE`:
+
+```
+INFO Kp=2.40 Ki=1.40 Kd=0.00 EMA=0.20 CAL=0.4941 MAX=90.0
+FUZZ=1 SOK=1 FH=85 DW=10 MS=30
+Z1 >= 27 cm : 135.4 mL/s
+Z2 >= 24 cm : 90.0 mL/s
+...
+Z10 >= 0 cm : 60.4 mL/s
+REF=45.1 cm | TRIM=20.0 mL
+```
+
+| Baris | Isi |
+|-------|-----|
+| `INFO …` | PID (Kp/Ki/Kd), penghalus RPM (EMA), faktor kalibrasi (CAL), batas RPM (MAX) |
+| `FUZZ …` | `FUZZ` = hybrid stop on/off · `SOK` = sensor warna dipercaya · `FH` = ambang homogen · `DW` = dwell (detik) · `MS` = minimum % durasi |
+| `Z1…Z10` | Batas ketinggian zona + debit `Q` (mL/detik) |
+| `REF` / `TRIM` | Jarak sensor ke dasar tangki (cm) · koreksi tutup valve (mL) |
 
 ---
 

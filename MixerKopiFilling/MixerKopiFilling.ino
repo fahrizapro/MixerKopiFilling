@@ -716,6 +716,23 @@ void printZona() {
   Serial.print(F(" cm | TRIM=")); Serial.print(fillTrim, 1); Serial.println(F(" mL"));
 }
 
+// Parameter fuzzy-OR stop + kepercayaan sensor (bagian dari INFO).
+void printFuz() {
+  Serial.print(F("FUZZ=")); Serial.print(stopFuzz ? 1 : 0);
+  Serial.print(F(" SOK=")); Serial.print((colorFullInit && colorOK) ? 1 : 0);
+  Serial.print(F(" FH=")); Serial.print(fuH, 0);
+  Serial.print(F(" DW=")); Serial.print(dwellMs / 1000UL);
+  Serial.print(F(" MS=")); Serial.println(minPct);
+}
+
+// INFO: cetak semua parameter tersimpan saat ini (PID, fuzzy, zona Q, REF, TRIM).
+void printInfo() {
+  Serial.print(F("INFO "));
+  printParams();
+  printFuz();
+  printZona();
+}
+
 bool processCommand(char* s) {
   char* arg = strchr(s, ' ');
   if (arg) { *arg = 0; arg++; } else arg = (char*)"";
@@ -753,6 +770,7 @@ bool processCommand(char* s) {
   else if (!strcmp(s, "TRIM"))   { if (v < TRIM_MIN_ML || v > TRIM_MAX_ML) return false; fillTrim = v; }
   else if (!strcmp(s, "REF"))    { if (v < 10 || v > 150) return false; levelRef = v; }
   else if (!strcmp(s, "ZONA") || !strcmp(s, "Z")) { printZona(); }
+  else if (!strcmp(s, "INFO"))   { printInfo(); }
   else if (s[0] == 'Q' && s[1] >= '0' && s[1] <= '9') {   // Q z v : debit zona z
     uint8_t z = atoi(s + 1);
     if (z < 1 || z > ZONES || v < Q_MIN_ML || v > Q_MAX_ML) return false;
@@ -1194,7 +1212,14 @@ bool isRunning() {
 // Header sekali tiap mulai running: legenda kolom + setting statis
 void monHeader() {
   Serial.println(F("MON: T ST SV PV PWM SISA HOM R G B"));
-  Serial.print(F("SET Kp=")); Serial.print(Kp, 2);
+  Serial.print(F("SET "));
+  printParams();
+}
+
+// Parameter aktif (PID + penghalus + kalibrasi) - dipakai monHeader() & INFO.
+// Ditaruh di fungsi sendiri agar string tak terduplikasi di flash.
+void printParams() {
+  Serial.print(F("Kp=")); Serial.print(Kp, 2);
   Serial.print(F(" Ki=")); Serial.print(Ki, 2);
   Serial.print(F(" Kd=")); Serial.print(Kd, 2);
   Serial.print(F(" EMA=")); Serial.print(emaAlpha, 2);
@@ -1256,11 +1281,8 @@ void showMon() {
   Serial.print(F(" R=")); Serial.print(lastR, 0);
   Serial.print(F(" G=")); Serial.print(lastG, 0);
   Serial.print(F(" B=")); Serial.println(lastB, 0);
-  Serial.print(F("FUZZ=")); Serial.print(stopFuzz ? 1 : 0);
-  Serial.print(F(" SOK=")); Serial.print((colorFullInit && colorOK) ? 1 : 0);
-  Serial.print(F(" FH=")); Serial.print(fuH, 0);
-  Serial.print(F(" DW=")); Serial.print(dwellMs / 1000UL);
-  Serial.print(F(" MS=")); Serial.println(minPct);
+  // Parameter fuzzy tidak lagi dicetak di tiap baris telemetri.
+  // Lihat perintah INFO untuk menampilkan semua parameter.
 }
 
 // ================================================================
