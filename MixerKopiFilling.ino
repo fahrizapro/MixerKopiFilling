@@ -3,7 +3,9 @@
 // Encoder D2 | PWM D9 | Relay D13 | HC-SR04 TRIG D11 ECHO D12
 // TCS3200 S0=D3 S1=D4 S2=D5 S3=D6 OUT=A0 | LCD 20x4 + Keypad via I2C
 //
-// PENGADUK = TIMER MURNI. Sensor warna hanya monitoring homogenisasi.
+// PENGADUK = TIMER + opsi FUZZ (fuzzy OR): berhenti jika timer habis ATAU
+//   homogen capai ambang (dwell + MINSTIR + validasi sensor). Timer tetap
+//   penentu MAXIMUM - sensor warna tidak bisa mempanjangkan waktu.
 //
 // FILLING = TIMER 10 ZONA (tanpa tetes, keputusan = timer). Tangki D30 cm.
 //   1. TARE : rata-rata 5x jarak awal -> tinggi air awal, cek stok, zona awal.
@@ -40,6 +42,8 @@
 //   SAVE       : simpan semua setting ke EEPROM
 //   RAW ON/OFF : data RPM (PV SV PWM) | COL ON/OFF : data warna RGB+homogen
 //   USD ON/OFF : data ultrasonik (mentah + EMA).
+//   FUZZ ON/OFF : hybrid-stop. FH n (40-99) : ambang homogen.
+//   DWELL n (0-60000 ms) : tahan homogen sebelum stop. MINSTIR n (0-95 %).
 // Telemetri OTOMATIS tiap 0.2 dtk saat running (tanpa perintah).
 // ================================================================
 
@@ -109,6 +113,14 @@ const unsigned long US_BLANK_MS = 500;   // abaikan semua sampel 0.5 dtk tiap re
 const unsigned long COLOR_MS = 500;
 const uint8_t  COLOR_WIN     = 8;           // jendela lebih besar = lebih stabil
 const uint8_t  COLOR_AVG     = 5;           // trimmed-mean: buang min & max
+const uint8_t  COLOR_FAIL_MAX = 5;          // baca gagal beruntun -> sensor tidak dipercaya
+
+// ---- Penghentian hybrid (fuzzy OR): timer ATAU homogen ----
+// mu_tinggi(H): 0 pada (FH-20), 1 pada FH -> alpha-cut 0.5 = putuskan pada FH-10.
+bool stopFuzz = true;                       // ON: motor boleh berhenti sebelum timer
+float fuH = 85.0;                           // ambang homogen penuh (FH-10 = titik putus)
+unsigned long dwellMs = 10000UL;            // homogen harus bertahan selama ini
+uint8_t minPct = 30;                        // minimal % durasi timer sebelum FUZZ boleh aktif
 
 // ---------------- Keypad I2C ----------------
 #define KEYPAD_ADDR 0x20
@@ -198,6 +210,9 @@ bool    colorFullInit = false;          // jendela penuh pertama sudah diisi?
 float   colorHomog  = 0;                // homogenisasi 0-100, monitoring saja
 float   lastR = 0, lastG = 0, lastB = 0; // mentah RGB terakhir untuk telemetri
 unsigned long tColor = 0;
+uint8_t colorFail = 0;                  // kegagalan baca warna beruntun
+bool    colorOK = false;                // sensor dipercaya? (gagal beruntun >= 5)
+unsigned long fuzzSince = 0;            // mulai dwell homogen tinggi (FUZZ stop)
 
 char doneTitle[21], doneL1[21], doneL2[21];
 
@@ -207,8 +222,9 @@ char lcdBuf[4][21];
 char lcdShown[4][21];
 
 // ---------------- EEPROM ----------------
-struct Settings { uint16_t magic; float kp, ki, kd, cal, maxRpm, alpha, trim; float q[ZONES]; float ref; };
-const uint16_t SETTINGS_MAGIC = 0xA55E;     // beda dari versi lama (layout berubah)
+struct Settings { uint16_t magic; float kp, ki, kd, cal, maxRpm, alpha, trim; float q[ZONES]; float ref;
+                  float fuh; unsigned long dwell; uint8_t minpkt; uint8_t fuzz; };
+const uint16_t SETTINGS_MAGIC = 0xA560;     // ditingkatkan: layout bertambah (fuzzy)
 
 void saveSettings() {
   Settings s;
@@ -217,6 +233,7 @@ void saveSettings() {
   s.maxRpm = maxRpm; s.alpha = emaAlpha; s.trim = fillTrim;
   memcpy(s.q, qZona, sizeof qZona);
   s.ref = levelRef;
+  s.fuh = fuH; s.dwell = dwellMs; s.minpkt = minPct; s.fuzz = stopFuzz ? 1 : 0;
   EEPROM.put(0, s);
 }
 
@@ -228,12 +245,17 @@ void loadSettings() {
   if (s.kp < 0 || s.ki < 0 || s.kd < 0) return;
   if (!(s.trim >= TRIM_MIN_ML && s.trim <= TRIM_MAX_ML)) return;
   if (!(s.ref >= 10 && s.ref <= 150)) return;
+  if (!(s.fuh >= 40 && s.fuh <= 99)) return;
+  if (s.dwell > 60000UL) return;
+  if (s.minpkt > 95) return;
+  if (s.fuzz > 1) return;
   for (uint8_t i = 0; i < ZONES; i++)
     if (!(s.q[i] >= Q_MIN_ML && s.q[i] <= Q_MAX_ML)) return;
   Kp = s.kp; Ki = s.ki; Kd = s.kd;
   calFactor = s.cal; maxRpm = s.maxRpm; emaAlpha = s.alpha;
   fillTrim = s.trim; levelRef = s.ref;
   memcpy(qZona, s.q, sizeof qZona);
+  fuH = s.fuh; dwellMs = s.dwell; minPct = s.minpkt; stopFuzz = (s.fuzz != 0);
 }
 
 // Target volume tempat valve ditutup (mL) = target - trim, minimal 10 mL
@@ -259,6 +281,14 @@ int8_t zoneHyst(float h, int8_t z) {
 // Durasi pengadukan (ms) sesuai jenis kopi
 unsigned long stirMsFor(int8_t c) {
   return STIR_MS[c];
+}
+
+// FUZZ stop hanya boleh aktif jika: sensor dipercaya, jendela penuh, dan
+// waktu aduk sudah melewati MINSTIR % (guard anti stop-dini).
+bool fuzzReady() {
+  if (!colorOK || !colorFullInit || minPct == 0) return false;
+  unsigned long el = millis() - stirStart;
+  return el >= (unsigned long)(stirDur * minPct / 100UL);
 }
 
 // ================================================================
@@ -586,8 +616,13 @@ void colorMonitor(unsigned long now) {
   tColor = now;
 
   float r, g, b;
-  if (!readColor(r, g, b)) return;          // pertahankan nilai lama jika gagal
-  lastR = r; lastG = g; lastB = b;          // simpan mentah untuk telemetri
+  if (!readColor(r, g, b)) {
+    if (colorFail < COLOR_FAIL_MAX) colorFail++;        // hitung gagal beruntun
+    if (colorFail >= COLOR_FAIL_MAX) colorOK = false;   // FUZZ dilarang pakai data ini
+    return;                                  // pertahankan nilai lama jika gagal
+  }
+  colorFail = 0; colorOK = true;             // bacaan valid, sensor dipercaya
+  lastR = r; lastG = g; lastB = b;           // simpan mentah untuk telemetri
 
   float tot = r + g + b;
   if (!(tot > 0)) return;
@@ -601,15 +636,20 @@ void colorMonitor(unsigned long now) {
   float worst = 0;
   for (uint8_t c = 0; c < 3; c++) {
     float *arr = (c == 0) ? cR : (c == 1) ? cG : cB;
-    float mn = arr[0], mx = arr[0], sum = 0;
-    for (uint8_t i = 0; i < COLOR_WIN; i++) {
-      if (arr[i] < mn) mn = arr[i];
-      if (arr[i] > mx) mx = arr[i];
-      sum += arr[i];
+    float t[COLOR_WIN];
+    for (uint8_t i = 0; i < COLOR_WIN; i++) t[i] = arr[i];
+    for (uint8_t i = 1; i < COLOR_WIN; i++) {   // urutkan (insertion sort)
+      float x = t[i];
+      int8_t j = i - 1;
+      while (j >= 0 && t[j] > x) { t[j + 1] = t[j]; j--; }
+      t[j + 1] = x;
     }
-    float mean = sum / COLOR_WIN;
-    if (mean > 0.001) {
-      float dev = (mx - mn) / mean * 100.0;
+    float sum = 0;                              // buang 2 ekstrem: pakai 6 tengah
+    for (uint8_t i = 1; i < COLOR_WIN - 1; i++) sum += t[i];
+    float mean = sum / (COLOR_WIN - 2);
+    if (mean > 0.001f) {
+      // range robust: max tengah - min tengah (satu outlier tak merusak skor)
+      float dev = (t[COLOR_WIN - 2] - t[1]) / mean * 100.0f;
       if (dev > worst) worst = dev;
     }
   }
@@ -625,12 +665,18 @@ void colorMonitor(unsigned long now) {
   }
 }
 
-void stirFinishWithHomog() {
+void stirFinishWithHomog(bool fuzzy) {
   hardwareOff();
   char a[8];
   dtostrf(colorHomog, 4, 1, a);
-  setDone(PSTR("ADUK SELESAI"), PSTR(""), PSTR("Motor berhenti"));
+  setDone(fuzzy ? PSTR("ADUK FUZZY") : PSTR("ADUK SELESAI"), PSTR(""),
+          fuzzy ? PSTR("Homogen capai SP") : PSTR("Motor berhenti"));
   snprintf_P(doneL1, sizeof doneL1, PSTR("Homogen: %s%%"), a);
+  if (fuzzy) {
+    Serial.print(F("STOP=FUZZY H=")); Serial.print(colorHomog, 1);
+    Serial.print(F(" T=")); Serial.print((millis() - stirStart) / 1000UL);
+    Serial.println(F("s"));
+  }
 }
 
 void processStage() {
@@ -640,11 +686,15 @@ void processStage() {
     case ST_FILLING: fillStep(now);   break;
     case ST_STIR:
       colorMonitor(now);                        // monitoring paralel, timer tetap jalan
-      if (now - stirStart >= stirDur) stirFinishWithHomog();
+      if (now - stirStart >= stirDur) stirFinishWithHomog(false);
+      else if (stopFuzz && fuzzReady() && colorHomog >= fuH - 10.0f) {
+        if (fuzzSince == 0) fuzzSince = now;    // homogen tinggi, mulai dwell
+        else if (now - fuzzSince >= dwellMs) stirFinishWithHomog(true);
+      } else fuzzSince = 0;                     // homogen turun -> reset dwell
       break;
     case ST_COLOR:                              // kompatibilitas: tidak dipakai lagi
       colorMonitor(now);
-      if (now - stirStart >= stirDur) stirFinishWithHomog();
+      if (now - stirStart >= stirDur) stirFinishWithHomog(false);
       break;
     default:
       if (usShow || verifAt) usSample(now);  // debug ultrasonik / level untuk VERIF
@@ -709,6 +759,10 @@ bool processCommand(char* s) {
     qZona[z - 1] = v;
   }
   else if (!strcmp(s, "USD"))    { usShow = (strcmp(arg, "ON") == 0 || strcmp(arg, "on") == 0); }
+  else if (!strcmp(s, "FUZZ"))   { stopFuzz = (strcmp(arg, "ON") == 0 || strcmp(arg, "on") == 0); }
+  else if (!strcmp(s, "FH"))     { if (v < 40 || v > 99) return false; fuH = v; }
+  else if (!strcmp(s, "DWELL"))  { if (v < 0 || v > 60000) return false; dwellMs = (unsigned long)v; }
+  else if (!strcmp(s, "MINSTIR")){ if (v < 0 || v > 95) return false; minPct = (uint8_t)(v + 0.5); }
   else if (!strcmp(s, "SAVE"))   { saveSettings(); }
   else if (!strcmp(s, "RAW"))    { rawShow = (strcmp(arg, "ON") == 0 || strcmp(arg, "on") == 0); }
   else if (!strcmp(s, "COL"))    { colShow = (strcmp(arg, "ON") == 0 || strcmp(arg, "on") == 0); }
@@ -1202,6 +1256,11 @@ void showMon() {
   Serial.print(F(" R=")); Serial.print(lastR, 0);
   Serial.print(F(" G=")); Serial.print(lastG, 0);
   Serial.print(F(" B=")); Serial.println(lastB, 0);
+  Serial.print(F("FUZZ=")); Serial.print(stopFuzz ? 1 : 0);
+  Serial.print(F(" SOK=")); Serial.print((colorFullInit && colorOK) ? 1 : 0);
+  Serial.print(F(" FH=")); Serial.print(fuH, 0);
+  Serial.print(F(" DW=")); Serial.print(dwellMs / 1000UL);
+  Serial.print(F(" MS=")); Serial.println(minPct);
 }
 
 // ================================================================

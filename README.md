@@ -20,7 +20,7 @@ Arduino Uno · BTS7960 · HC-SR04 · TCS3200 · LCD 20×4 I2C
 [![C++](https://img.shields.io/badge/C%2B%2B-Arduino-00599C?logo=cplusplus&logoColor=white)](https://www.arduino.cc/reference/en/)
 [![License](https://img.shields.io/github/license/fahrizapro/MixerKopiFilling)](LICENSE)
 [![Last Commit](https://img.shields.io/github/last-commit/fahrizapro/MixerKopiFilling)](https://github.com/fahrizapro/MixerKopiFilling/commits/main)
-[![Flash](https://img.shields.io/badge/Flash-94%25-orange)]()
+[![Flash](https://img.shields.io/badge/Flash-99%25-orange)]()
 [![RAM](https://img.shields.io/badge/RAM-74%25-orange)]()
 
 </div>
@@ -54,10 +54,10 @@ Arduino Uno · BTS7960 · HC-SR04 · TCS3200 · LCD 20×4 I2C
 | Fitur | Detail |
 |-------|--------|
 | 🎯 **Kontrol RPM PID** | Closed-loop encoder 20 PPR + feedforward + anti-windup + slew-rate limiter |
-| ⏱️ **Pengadukan Berbasis Timer** | 3 varian kopi dengan durasi tetap: 1 / 2 / 3 menit — sensor warna **tidak** menghentikan motor |
+| ⏱️ **Penghentian Hybrid Fuzzy** | Motor berhenti jika **timer habis ATAU homogen ≥ ambang** (fuzzy OR + dwell + validasi sensor) — timer tetap dijamin sebagai durasi maksimum |
 | 💧 **Filling Timer 10 Zona** | Debit `Q` berbeda per zona ketinggian air, diintegrasikan tiap loop (`Σ Q × dt`) |
 | 📏 **Sensor Level Non-Kontak** | HC-SR04 dengan filter 4 lapis: median-5 → gate jangkauan → EMA → penolak lonjakan |
-| 🎨 **Monitoring Homogenisasi** | TCS3200 membaca rasio RGB ternormalisasi, ditampilkan sebagai skor 0–100% |
+| 🎨 **Monitoring Homogenisasi** | TCS3200 membaca rasio RGB ternormalisasi; deviasi dihitung dari **6 tengah dari 8 sampel terurut** (tahan outlier) |
 | 🖥️ **HMI Lokal** | LCD 20×4 I2C + keypad 4×4 I2C (hanya 2 pin Arduino terpakai) |
 | 💾 **Setting Persisten** | PID, kalibrasi, batas RPM, debit 10 zona, REF, dan TRIM disimpan di EEPROM |
 | 📡 **Telemetri Serial** | Data otomatis tiap 200 ms saat proses berjalan + perintah teks untuk tuning |
@@ -130,11 +130,11 @@ graph TB
 
 | Subsistem | Penentu | Umpan Balik | Catatan |
 |-----------|---------|-------------|---------|
-| **Pengadukan** | Timer (1/2/3 menit) | Encoder → PID RPM | Sensor warna hanya untuk display homogenitas |
+| **Pengadukan** | Timer ATAU homogen (fuzzy OR) | Encoder → PID RPM | Sensor warna bisa mempercepat stop, tapi **tidak bisa memperpanjang** |
 | **Filling** | Timer volume (`target − TRIM`) | Ultrasonik → pemilih zona `Q` | Ultrasonik **tidak** menutup valve |
 | **Keamanan** | Timeout, level minimum, tombol `#` | — | Valve selalu ditutup paksa |
 
-> **Filosofi desain:** pengadukan selesai karena **waktu**, bukan karena sensor. Filling selesai karena **volume terintegrasi**, bukan karena level. Level air hanya menentukan *debit mana* yang dipakai.
+> **Filosofi desain:** homogen boleh *mempercepat* pengadukan, tapi **timer tetap batas maksimum** — sensor warna yang gagal jatuh kembali ke timer murni. Filling selesai karena **volume terintegrasi**, bukan karena level. Level air hanya menentukan *debit mana* yang dipakai.
 
 ---
 
@@ -445,9 +445,9 @@ stateDiagram-v2
 
 | Memori | Terpakai | Kapasitas | Persentase |
 |--------|----------|-----------|------------|
-| **Flash** | 30.568 B | 32.256 B | **94%** |
-| **RAM statis** | 1.535 B | 2.048 B | **74%** |
-| Sisa stack | 513 B | — | ⚠️ tipis |
+| **Flash** | 32.072 B | 32.256 B | **99%** |
+| **RAM statis** | 1.571 B | 2.048 B | **76%** |
+| Sisa stack | 477 B | — | ⚠️ tipis |
 
 > Firmware ini memang dioptimalkan hemat flash (`F()`, `PSTR()`, `PROGMEM`). Menambah fitur besar berisiko melebihi kapasitas.
 
@@ -571,6 +571,10 @@ Semua perintah diakhiri **newline**, tidak peka huruf besar/kecil.
 | `RAW ON/OFF` | `RAW ON` | — | Telemetri RPM (PV SV PWM) |
 | `COL ON/OFF` | `COL ON` | — | Telemetri warna RGB + homogen |
 | `USD ON/OFF` | `USD ON` | — | Telemetri ultrasonik (mentah + EMA) |
+| `FUZZ ON/OFF` | `FUZZ ON` | — | Aktif/matikan penghentian hybrid (homogen boleh mempercepat stop) |
+| `FH n` | `FH 85` | `40–99` (default 85) | Ambang homogen penuh; motor berhenti pada `FH − 10` |
+| `DWELL n` | `DWELL 10000` | `0–60000` ms (default 10000) | Homogen harus bertahan selama ini sebelum stop |
+| `MINSTIR n` | `MINSTIR 30` | `0–95` % (default 30) | Min. % durasi timer sebelum FUZZ boleh aktif |
 
 ### Contoh Sesi
 
@@ -617,6 +621,11 @@ MON: T ST VOL ISI GOAL ZONA Q SISA VALVE
 | `SISA` | Sisa waktu (detik) |
 | `HOM` | Skor homogenisasi 0–100% |
 | `R` `G` `B` | Lebar pulsa mentah TCS3200 |
+| `FUZZ` | `1` = penghentian hybrid aktif |
+| `SOK` | `1` = sensor warna dipercaya (tidak gagal beruntun ≥ 5) |
+| `FH` | Ambang homogen penuh (motor stop pada `FH−10`) |
+| `DW` | Dwell penghentian (detik) |
+| `MS` | Minimum % durasi timer sebelum FUZZ aktif |
 | `VOL` | Target volume (liter) |
 | `ISI` | Volume terintegrasi timer (mL) |
 | `GOAL` | Ambang tutup = target − TRIM (mL) |
@@ -639,6 +648,21 @@ VERIF: timer=<mL> level=<mL> selisih=<%> Z<zona>
 ```
 
 Gunakan baris ini untuk mengevaluasi akurasi kalibrasi `Q` dan `TRIM`.
+
+### Baris STOP=FUZZY
+
+Dicetak ketika motor berhenti karena **homogen capai ambang** (bukan timer):
+
+```
+STOP=FUZZY H=86.2 T=142s
+```
+
+| Kolom | Arti |
+|-------|------|
+| `H` | Skor homogen saat stop (%) |
+| `T` | Waktu aduk terpakai (detik) |
+
+Layar DONE saat itu juga menampilkan judul **ADUK FUZZY** dengan baris "Homogen capai SP", berbeda dari **ADUK SELESAI** (timer habis).
 
 ---
 
@@ -683,7 +707,7 @@ out = ff + Kp·e + Kd·(−dPV/dt) + I
 | `2` | COFFEE VARIANT | 120 detik |
 | `3` | NIGHTFALL BLOOM | 180 detik |
 
-Timer berbasis `millis()` — motor berhenti tepat waktu meskipun sensor warna gagal.
+Timer berbasis `millis()`. Dengan default `FUZZ ON`, homogen ≥ ambang dapat menghentikan motor **lebih cepat**; jika sensor tidak dipercaya, padam otomatis kembali ke timer murni — timer selalu durasi maksimum.
 
 ### 4. Filling Timer 10 Zona
 
@@ -716,11 +740,52 @@ flowchart LR
 
 ```
 rn = R / (R + G + B)   (idem untuk G, B)
-deviasi = (max − min) / mean × 100   per kanal
+tiap kanal: 8 sampel diurutkan, buang 2 ekstrem → mean & range dari 6 tengah
+deviasi = (range/mean) × 100
 skor = clamp(100 − deviasi_terburuk × 4, 0, 100)
 ```
 
-Jendela 8 sampel × 500 ms = **4 detik**. Nilai ini **hanya monitoring** — tidak menghentikan motor.
+Jendela 8 sampel × 500 ms = **4 detik**. Range dihitung dari **6 nilai tengah hasil sorting** sehingga satu sampel outlier tidak merusak skor. Bacaan gagal beruntun ≥ 5 (`COLOR_FAIL_MAX`) mematikan kepercayaan sensor (`colorOK = false`) selama homogen masih tampil di layar.
+
+### 7. Penghentian Hybrid Fuzzy (FUZZ)
+
+Keputusan stop adalah **fuzzy OR (max)** dua himpunan, lalu α-cut pada 0,5:
+
+```
+μ_homon  = trapesium(colorHomog): 0 pada (FH−20) … 1 pada FH   → α-cut = FH−10
+μ_timer  = trapesium(progress):   0 pada 90%    … 1 pada 100%  → α-cut = 100%
+μ_stop   = max(μ_homon, μ_timer)  → μ_stop ≥ 0.5 ⇒ motor OFF
+```
+
+μ_homon hanya dihitung bila **semua guard** lolos (`fuzzReady()`):
+
+| Guard | Nilai default | Fungsi |
+|-------|---------------|--------|
+| Sensor dipercaya | `colorOK` | Gagal beruntun ≥ 5 → μ_homon = 0 |
+| Jendela penuh | `colorFullInit` | Menunggu 8 sampel (4 s) terkumpul |
+| Dwell | `DWELL` 10 s | Homogen harus bertahan level tinggi selama itu, turun = reset |
+| Minimum aduk | `MINSTIR` 30% | FUZZ baru boleh aktif setelah 30% durasi timer |
+
+```mermaid
+flowchart LR
+    A["colorHomog<br/>0–100"] --> B{"fuzzReady()?<br/>sensor OK · window<br/>MINSTIR%"}
+    B -- tidak --> T["μ_homon = 0<br/>(kembali ke timer)"]
+    B -- ya --> C{"H ≥ FH−10 ?"}
+    C -- ya --> D["dwell mulai<br/>(fuzzSince)"]
+    C -- tidak --> E["reset dwell"]
+    D -- "bertahan ≥ DWELL" --> S["Motor OFF<br/>ADUK FUZZY"]
+    D -- turun di bawah ambang --> E
+    T --> T2["timer habis<br/>→ ADUK SELESAI"]
+    E --> T2
+
+    style B fill:#1565c0,color:#fff
+    style S fill:#2e7d32,color:#fff
+    style T fill:#555,color:#fff
+```
+
+Hasilnya: kopi yang cepat larut selesai 10–20% lebih awal, sedangkan sensor yang bermasalah **tidak bisa memotong proses** — keputusan jatuh murni ke timer.
+
+> ⚠️ **Upgrade dari versi lama:** layout EEPROM bertambah (FH/DWELL/MINSTIR/FUZZ, magic `0xA560`), sehingga setting lama diabaikan. Setelah upload, kirim ulang parameter lama Anda lalu **`SAVE`**.
 
 ---
 
@@ -865,7 +930,8 @@ A = π × r² = 3,14159 × 15² = 706,86 cm²
 
 - Filling bersifat **open-loop volume**: error kalibrasi `Q` langsung menjadi error volume (1:1).
 - Sensor ultrasonik **tidak** mengoreksi volume — hanya memilih `Q` zona.
-- Monitoring homogenisasi bersifat indikatif, bukan ukuran laboratorium.
+- Homogenisasi indikatif; saat **FUZZ ON** skor warna ikut menentukan stop motor, sehingga sensor warna wajib tersambung & terkalibrasi bila ingin fitur akselerasi ini (kalau tidak, otomatis kembali ke timer murni).
+- Skala deviasi homogen (`×4`, FH−10) dituning untuk kopi bubuk–susu; bahan lain mungkin perlu `FH`/`MINSTIR` berbeda.
 - Satu driver motor, satu valve — tidak ada kontrol paralel.
 
 ---
